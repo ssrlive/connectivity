@@ -1,0 +1,32 @@
+[default]
+template_dir = "static"
+address = "0.0.0.0"
+port = 8000
+workers = 16
+keep_alive = 5
+ident = "Rocket"
+# please change "normal" to "off" when you deploy the web app
+log_level = "normal"
+temp_dir = "/tmp"
+cli_colors = true
+## NOTE: Don't (!) use this key! Generate your own!
+secret_key = "hPRYyVRiMyxpw5sCC1XeCMN1kFsDCqKvBi2QJxMMQQk="
+
+[default.databases.sqlite_database]
+url = "db/db.sqlite"
+
+[default.limits]
+forms = "64 kB"
+json = "1 MiB"
+msgpack = "2 MiB"
+"file/jpg" = "5 MiB"
+
+#[default.tls]
+#certs = "/fakesite_cert/chained_cert.pem"
+#key = "/fakesite_cert/private_key.pem"
+
+[default.shutdown]
+ctrlc = true
+signals = ["term", "hup"]
+grace = 5
+mercy = 5
