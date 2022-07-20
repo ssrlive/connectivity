@@ -3,7 +3,7 @@ extern crate rocket;
 use port_check::is_port_reachable_with_timeout;
 use rocket::{serde::json::Json, Request};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
@@ -47,6 +47,7 @@ impl TargetAddr {
 struct PingResult {
     target: TargetAddr,
     result: bool,
+    duration_secs: u64,
 }
 
 #[get("/ping?<host>&<port>")]
@@ -55,6 +56,12 @@ async fn ping(host: &str, port: u16) -> Json<PingResult> {
         host: host.to_string(),
         port,
     };
+    let start = Instant::now();
     let result = target.is_reachable();
-    Json(PingResult { target, result })
+    let duration_secs = start.elapsed().as_secs();
+    Json(PingResult {
+        target,
+        result,
+        duration_secs,
+    })
 }
