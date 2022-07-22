@@ -82,15 +82,17 @@ async fn ping_from_china(host: &str, port: u16) -> Json<PingResult> {
     let text = resp.text().await.unwrap();
 
     let mut encode = None;
-    let document = Html::parse_document(&text);
-    let selector = Selector::parse(r#"input"#).unwrap();
-    for item in document.select(&selector) {
-        let value = item.value();
-        if let Some(val) = value.attr("id") {
-            if val == "encode" {
-                if let Some(val) = value.attr("value") {
-                    encode = Some(val.to_string());
-                    break;
+    {
+        let document = Html::parse_document(&text);
+        let selector = Selector::parse(r#"input"#).unwrap();
+        for item in document.select(&selector) {
+            let value = item.value();
+            if let Some(val) = value.attr("id") {
+                if val == "encode" {
+                    if let Some(val) = value.attr("value") {
+                        encode = Some(val.to_string());
+                        break;
+                    }
                 }
             }
         }
@@ -105,19 +107,10 @@ async fn ping_from_china(host: &str, port: u16) -> Json<PingResult> {
         ]);
 
         let client = reqwest::Client::new();
-        let resp = client.post(url).json(&map).send().await.unwrap();
-
-        #[derive(Debug, Deserialize, Serialize)]
-        #[serde(crate = "rocket::serde")]
-        struct ChinazResult {
-            status: u32,
-            msg: String,
-        }
+        let resp = client.post(url).form(&map).send().await.unwrap();
 
         let text = resp.text().await.unwrap();
-        let r = serde_json::from_str::<ChinazResult>(&text).unwrap();
-        result = r.status != 0;
-        println!("{:?}", r.msg);
+        result = text.contains("status:1");
     }
     let duration_secs = start.elapsed().as_secs();
     Json(PingResult {
@@ -125,4 +118,20 @@ async fn ping_from_china(host: &str, port: u16) -> Json<PingResult> {
         result,
         duration_secs,
     })
+}
+
+#[test]
+fn test_china_result() {
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(crate = "rocket::serde")]
+    struct ChinazResult {
+        status: u32,
+          msg: String,
+    }
+
+    let text = "{\"status\":1,\"msg\":\"开启\"}";
+
+    let r = serde_json::from_str::<ChinazResult>(&text).unwrap();
+    assert_ne!(r.status, 0);
+    println!("{:?}", r.msg);
 }
