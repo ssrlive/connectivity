@@ -1,14 +1,35 @@
 #[macro_use]
 extern crate rocket;
 use port_check::is_port_reachable_with_timeout;
+use rocket::figment::{
+    providers::{Format, Toml},
+    value::Value,
+    Figment,
+};
 use rocket::{serde::json::Json, Request};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+static mut PING_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    {
+        let config =
+            Figment::from(rocket::Config::default()).merge(Toml::file("Rocket.toml").nested());
+        let config = config.select("my_settings");
+        let v = config
+            .find_value("ping_timeout_second")
+            .unwrap_or_else(|_| Value::from(5));
+
+        println!("Config name: {:#?}", v);
+        unsafe {
+            PING_TIMEOUT = Duration::from_secs(v.to_u128().unwrap() as u64);
+        }
+    }
+
     let _ = rocket::build()
         .register("/", catchers![not_found])
         .mount("/", routes![index, ping, ping_from_china])
@@ -40,7 +61,8 @@ impl TargetAddr {
     }
 
     fn is_reachable(&self) -> bool {
-        is_port_reachable_with_timeout(self.to_host_port(), Duration::from_millis(10_000))
+        let timeout: Duration = unsafe { PING_TIMEOUT };
+        is_port_reachable_with_timeout(self.to_host_port(), timeout)
     }
 }
 
@@ -126,7 +148,7 @@ fn test_china_result() {
     #[serde(crate = "rocket::serde")]
     struct ChinazResult {
         status: u32,
-          msg: String,
+        msg: String,
     }
 
     let text = "{\"status\":1,\"msg\":\"开启\"}";

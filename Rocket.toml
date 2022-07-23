@@ -1,3 +1,6 @@
+[my_settings]
+ping_timeout_second = 5
+
 [default]
 template_dir = "static"
 address = "0.0.0.0"
