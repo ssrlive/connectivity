@@ -3,16 +3,17 @@ extern crate rocket;
 use port_check::is_port_reachable_with_timeout;
 use rocket::figment::{
     providers::{Format, Toml},
-    value::Value,
+    value::{Num, Value},
     Figment,
 };
 use rocket::{serde::json::Json, Request};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use std::{collections::HashMap, sync::Mutex};
 
-static mut PING_TIMEOUT: Duration = Duration::from_secs(5);
+// need nightly toolchain for this
+static mut PING_TIMEOUT: Mutex<Duration> = Mutex::new(Duration::from_secs(5));
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
@@ -24,9 +25,13 @@ async fn main() -> Result<(), rocket::Error> {
             .find_value("ping_timeout_second")
             .unwrap_or_else(|_| Value::from(5));
 
-        println!("Config name: {:#?}", v);
+        let mut n0: u64 = 5;
+        if let Value::Num(_, Num::I64(n)) = v {
+            n0 = n as u64;
+        }
         unsafe {
-            PING_TIMEOUT = Duration::from_secs(v.to_u128().unwrap() as u64);
+            let mut pt = PING_TIMEOUT.lock().unwrap();
+            *pt = Duration::from_secs(n0);
         }
     }
 
@@ -61,7 +66,7 @@ impl TargetAddr {
     }
 
     fn is_reachable(&self) -> bool {
-        let timeout: Duration = unsafe { PING_TIMEOUT };
+        let timeout: Duration = unsafe { *PING_TIMEOUT.lock().unwrap() };
         is_port_reachable_with_timeout(self.to_host_port(), timeout)
     }
 }
