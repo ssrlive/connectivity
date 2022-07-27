@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate rocket;
-use port_check::is_port_reachable_with_timeout;
 use rocket::figment::{
     providers::{Format, Toml},
     value::{Num, Value},
@@ -9,6 +8,7 @@ use rocket::figment::{
 use rocket::{serde::json::Json, Request};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
 use std::{collections::HashMap, sync::Mutex};
 
@@ -53,6 +53,21 @@ fn not_found(req: &Request) -> String {
     format!("Sorry, '{}' is not a valid path.", req.uri())
 }
 
+pub fn is_port_reachable_with_timeout<A: ToSocketAddrs>(address: A, timeout: Duration) -> bool {
+    match address.to_socket_addrs() {
+        Ok(addrs) => {
+            for address in addrs {
+                if TcpStream::connect_timeout(&address, timeout).is_ok() {
+                    return true;
+                }
+                break; // if we can't connect, stop trying
+            }
+            false
+        }
+        Err(_err) => false,
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]
 struct TargetAddr {
@@ -61,6 +76,13 @@ struct TargetAddr {
 }
 
 impl TargetAddr {
+    fn new(host: &str, port: u16) -> Self {
+        Self {
+            host: host.to_string(),
+            port,
+        }
+    }
+
     fn to_host_port(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
@@ -81,10 +103,7 @@ struct PingResult {
 
 #[get("/ping?<host>&<port>")]
 async fn ping(host: &str, port: u16) -> Json<PingResult> {
-    let target = TargetAddr {
-        host: host.to_string(),
-        port,
-    };
+    let target = TargetAddr::new(host, port);
     let start = Instant::now();
     let result = target.is_reachable();
     let duration_secs = start.elapsed().as_secs();

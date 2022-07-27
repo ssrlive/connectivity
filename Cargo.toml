@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 rocket = { version = "0.5.0-rc.2", features = ["tls", "json"] }
-port_check = { version = "0.1.5" }
 serde = { version = "1.0.139", features = ["derive"] }
 serde_json = { version = "1.0.82", default-features = false, features = ["alloc"] }
 scraper = "0.13.0"
