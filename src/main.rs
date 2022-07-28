@@ -67,7 +67,7 @@ pub fn is_port_reachable_with_timeout<A: ToSocketAddrs>(address: A, timeout: Dur
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]
 struct TargetAddr {
     host: String,
@@ -101,9 +101,9 @@ struct PingResult {
 }
 
 impl PingResult {
-    fn new(target: TargetAddr, result: bool, duration: Duration) -> Self {
+    fn new(target: &TargetAddr, result: bool, duration: &Duration) -> Self {
         Self {
-            target,
+            target: target.clone(),
             result,
             duration_secs: duration.as_secs(),
         }
@@ -115,7 +115,7 @@ async fn ping(host: &str, port: u16) -> Json<PingResult> {
     let target = TargetAddr::new(host, port);
     let start = Instant::now();
     let result = target.is_reachable();
-    Json(PingResult::new(target, result, start.elapsed()))
+    Json(PingResult::new(&target, result, &start.elapsed()))
 }
 
 #[get("/pingfromchina?<host>&<port>")]
@@ -160,7 +160,7 @@ async fn ping_from_china(host: &str, port: u16) -> Json<PingResult> {
         let text = resp.text().await.unwrap();
         result = text.contains("status:1");
     }
-    Json(PingResult::new(target, result, start.elapsed()))
+    Json(PingResult::new(&target, result, &start.elapsed()))
 }
 
 #[test]
