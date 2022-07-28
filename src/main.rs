@@ -55,12 +55,11 @@ fn not_found(req: &Request) -> String {
 
 pub fn is_port_reachable_with_timeout<A: ToSocketAddrs>(address: A, timeout: Duration) -> bool {
     match address.to_socket_addrs() {
-        Ok(addrs) => {
-            for address in addrs {
+        Ok(mut addrs) => {
+            if let Some(address) = addrs.next() {
                 if TcpStream::connect_timeout(&address, timeout).is_ok() {
                     return true;
                 }
-                break; // if we can't connect, stop trying
             }
             false
         }
@@ -101,17 +100,22 @@ struct PingResult {
     duration_secs: u64,
 }
 
+impl PingResult {
+    fn new(target: TargetAddr, result: bool, duration: Duration) -> Self {
+        Self {
+            target,
+            result,
+            duration_secs: duration.as_secs(),
+        }
+    }
+}
+
 #[get("/ping?<host>&<port>")]
 async fn ping(host: &str, port: u16) -> Json<PingResult> {
     let target = TargetAddr::new(host, port);
     let start = Instant::now();
     let result = target.is_reachable();
-    let duration_secs = start.elapsed().as_secs();
-    Json(PingResult {
-        target,
-        result,
-        duration_secs,
-    })
+    Json(PingResult::new(target, result, start.elapsed()))
 }
 
 #[get("/pingfromchina?<host>&<port>")]
@@ -133,13 +137,11 @@ async fn ping_from_china(host: &str, port: u16) -> Json<PingResult> {
         let selector = Selector::parse(r#"input"#).unwrap();
         for item in document.select(&selector) {
             let value = item.value();
-            if let Some(val) = value.attr("id") {
-                if val == "encode" {
+            if let Some(val) = value.attr("id") && val == "encode" {
                     if let Some(val) = value.attr("value") {
                         encode = Some(val.to_string());
                         break;
                     }
-                }
             }
         }
     }
@@ -158,12 +160,7 @@ async fn ping_from_china(host: &str, port: u16) -> Json<PingResult> {
         let text = resp.text().await.unwrap();
         result = text.contains("status:1");
     }
-    let duration_secs = start.elapsed().as_secs();
-    Json(PingResult {
-        target,
-        result,
-        duration_secs,
-    })
+    Json(PingResult::new(target, result, start.elapsed()))
 }
 
 #[test]
