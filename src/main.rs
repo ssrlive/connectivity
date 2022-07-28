@@ -86,8 +86,7 @@ impl TargetAddr {
         format!("{}:{}", self.host, self.port)
     }
 
-    fn is_reachable(&self) -> bool {
-        let timeout: Duration = unsafe { *PING_TIMEOUT.lock().unwrap() };
+    fn is_reachable(&self, timeout: Duration) -> bool {
         is_port_reachable_with_timeout(self.to_host_port(), timeout)
     }
 }
@@ -114,7 +113,8 @@ impl PingResult {
 async fn ping(host: &str, port: u16) -> Json<PingResult> {
     let target = TargetAddr::new(host, port);
     let start = Instant::now();
-    let result = target.is_reachable();
+    let timeout: Duration = unsafe { *PING_TIMEOUT.lock().unwrap() };
+    let result = target.is_reachable(timeout);
     Json(PingResult::new(&target, result, &start.elapsed()))
 }
 
