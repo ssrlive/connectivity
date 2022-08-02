@@ -5,18 +5,26 @@ use rocket::figment::{
     value::{Num, Value},
     Figment,
 };
-use rocket::{serde::json::Json, Request};
+use rocket::{serde::json::Json, Request, State};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
-use std::{collections::HashMap, sync::Mutex};
 
-// need nightly toolchain for this
-static mut PING_TIMEOUT: Mutex<Duration> = Mutex::new(Duration::from_secs(5));
+struct CustomerSettings {
+    ping_timeout: Duration,
+}
+
+impl CustomerSettings {
+    fn new(ping_timeout: Duration) -> Self {
+        CustomerSettings { ping_timeout }
+    }
+}
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    let ping_timeout: Duration;
     {
         let config =
             Figment::from(rocket::Config::default()).merge(Toml::file("Rocket.toml").nested());
@@ -29,13 +37,11 @@ async fn main() -> Result<(), rocket::Error> {
         if let Value::Num(_, Num::I64(n)) = v {
             n0 = n as u64;
         }
-        unsafe {
-            let mut pt = PING_TIMEOUT.lock().unwrap();
-            *pt = Duration::from_secs(n0);
-        }
+        ping_timeout = Duration::from_secs(n0);
     }
 
     let _ = rocket::build()
+        .manage(CustomerSettings::new(ping_timeout))
         .register("/", catchers![not_found])
         .mount("/", routes![index, ping, ping_from_china])
         .launch()
@@ -110,10 +116,10 @@ impl PingResult {
 }
 
 #[get("/ping?<host>&<port>")]
-async fn ping(host: &str, port: u16) -> Json<PingResult> {
+async fn ping(host: &str, port: u16, state: &State<CustomerSettings>) -> Json<PingResult> {
     let target = TargetAddr::new(host, port);
     let start = Instant::now();
-    let timeout: Duration = unsafe { *PING_TIMEOUT.lock().unwrap() };
+    let timeout = state.ping_timeout;
     let result = target.is_reachable(timeout);
     Json(PingResult::new(&target, result, &start.elapsed()))
 }
