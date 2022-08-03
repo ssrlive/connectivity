@@ -3,11 +3,12 @@ use crate::pingresult::PingResult;
 use crate::targetaddr::TargetAddr;
 use redis::Commands;
 use std::error::Error;
+use std::time::Duration;
 
 pub fn put_to_redis(
     addr: &TargetAddr,
     result: &PingResult,
-    expire_secs: usize,
+    expire: &Duration,
 ) -> Result<(), Box<dyn Error>> {
     let client = redis::Client::open("redis://127.0.0.1/")?;
     let mut conn = client.get_connection()?;
@@ -17,7 +18,7 @@ pub fn put_to_redis(
     let value = serde_json::to_string(&result)?;
 
     conn.set/*::<_, String, _>*/(&key, &value)?;
-    conn.expire(&key, expire_secs)?;
+    conn.expire(&key, expire.as_secs() as usize)?;
 
     Ok(())
 }
@@ -44,7 +45,7 @@ fn test_redis_addr() {
 
     let mut result2 = get_from_redis(&addr);
     if let Err(_) = result2 {
-        let r = put_to_redis(&addr, &result, 20);
+        let r = put_to_redis(&addr, &result, &Duration::from_secs(20));
         assert!(r.is_ok());
         result2 = get_from_redis(&addr);
     }
