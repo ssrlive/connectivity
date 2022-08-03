@@ -1,10 +1,6 @@
 #[macro_use]
 extern crate rocket;
-use rocket::figment::{
-    providers::{Format, Toml},
-    value::{Num, Value},
-    Figment,
-};
+use rocket::figment::value::{Num, Value};
 use rocket::{serde::json::Json, Request, State};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
@@ -24,10 +20,11 @@ impl CustomerSettings {
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    let rt_env = rocket::build();
+
     let ping_timeout: Duration;
     {
-        let config =
-            Figment::from(rocket::Config::default()).merge(Toml::file("Rocket.toml").nested());
+        let config = rt_env.figment().clone();
         let config = config.select("my_settings");
         let v = config
             .find_value("ping_timeout_second")
@@ -40,7 +37,7 @@ async fn main() -> Result<(), rocket::Error> {
         ping_timeout = Duration::from_secs(n0);
     }
 
-    let _ = rocket::build()
+    let _ = rt_env
         .manage(CustomerSettings::new(ping_timeout))
         .register("/", catchers![not_found])
         .mount("/", routes![index, ping, ping_from_china])
