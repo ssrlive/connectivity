@@ -2,7 +2,7 @@ use crate::targetaddr::TargetAddr;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(crate = "rocket::serde")]
 pub struct PingResult {
     pub target: TargetAddr,

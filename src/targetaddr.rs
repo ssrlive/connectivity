@@ -2,7 +2,7 @@ use crate::portreachable::is_port_reachable_with_timeout;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(crate = "rocket::serde")]
 pub struct TargetAddr {
     pub host: String,

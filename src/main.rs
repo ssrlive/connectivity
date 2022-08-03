@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate rocket;
-use connectivity::{pingfromchina, PingResult, PingTask, TargetAddr};
+use connectivity::{pingfromchina, redis, PingResult, PingTask, TargetAddr};
 use rocket::figment::value::{Num, Value};
 use rocket::{serde::json::Json, Request, State};
 use std::sync::Arc;
@@ -94,9 +94,15 @@ async fn ping_from_china(
 ) -> Json<PingResult> {
     let target = TargetAddr::new(host, port);
 
-    state
-        .sender
-        .clone()
+    {
+        let v = redis::get_from_redis(&target);
+        if let Ok(v) = v {
+            return Json(v);
+        }
+    }
+
+    let sender = state.sender.clone();
+    sender
         .send(PingTask::PingFromChina(target.clone()))
         .await
         .unwrap();
