@@ -6,15 +6,21 @@ use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc::{self, Sender};
 
 struct CustomerSettings {
     ping_timeout: Duration,
+    sender: Arc<Sender<PingTask>>,
 }
 
 impl CustomerSettings {
-    fn new(ping_timeout: Duration) -> Self {
-        CustomerSettings { ping_timeout }
+    fn new(ping_timeout: Duration, sender: Arc<Sender<PingTask>>) -> Self {
+        CustomerSettings {
+            ping_timeout,
+            sender,
+        }
     }
 }
 
@@ -37,12 +43,30 @@ async fn main() -> Result<(), rocket::Error> {
         ping_timeout = Duration::from_secs(n0);
     }
 
+    let (tx, mut rx) = mpsc::channel::<PingTask>(1000);
+    let tx = Arc::new(tx);
+    let handle = tokio::spawn(async move {
+        while let Some(obj) = rx.recv().await {
+            if let PingTask::Terminate = obj {
+                break;
+            }
+            if let PingTask::PingFromChina(addr) = obj {
+                println!("{:#?}", addr);
+            }
+        }
+        println!("Worker thread is shutting down");
+    });
+
     let _ = rt_env
-        .manage(CustomerSettings::new(ping_timeout))
+        .manage(CustomerSettings::new(ping_timeout, tx.clone()))
         .register("/", catchers![not_found])
         .mount("/", routes![index, ping, ping_from_china])
         .launch()
         .await?;
+
+    tx.clone().send(PingTask::Terminate).await.unwrap();
+    handle.await.unwrap();
+
     Ok(())
 }
 
@@ -94,6 +118,14 @@ impl TargetAddr {
     }
 }
 
+#[derive(Debug, Clone)]
+enum PingTask {
+    #[allow(dead_code)]
+    Ping(TargetAddr),
+    PingFromChina(TargetAddr),
+    Terminate,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]
 struct PingResult {
@@ -122,11 +154,20 @@ async fn ping(host: &str, port: u16, state: &State<CustomerSettings>) -> Json<Pi
 }
 
 #[get("/pingfromchina?<host>&<port>")]
-async fn ping_from_china(host: &str, port: u16) -> Json<PingResult> {
-    let target = TargetAddr {
-        host: host.to_string(),
-        port,
-    };
+async fn ping_from_china(
+    host: &str,
+    port: u16,
+    state: &State<CustomerSettings>,
+) -> Json<PingResult> {
+    let target = TargetAddr::new(host, port);
+
+    state
+        .sender
+        .clone()
+        .send(PingTask::PingFromChina(target.clone()))
+        .await
+        .unwrap();
+
     let start = Instant::now();
 
     let url = format!("https://tool.chinaz.com/port?host={}&port={}", host, port);
