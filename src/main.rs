@@ -60,7 +60,7 @@ async fn main() -> Result<(), rocket::Error> {
                 let start = Instant::now();
                 let b = pingfromchina::ping_from_china(&addr.host, addr.port).await;
                 let result = PingResult::new(&addr, b, &start.elapsed());
-                if let Err(r) = redis::put_to_redis(&addr, &result, &survival_time) {
+                if let Err(r) = redis::put_to_redis(&addr, &result, &survival_time).await {
                     print!("{}", r);
                 }
                 time::sleep(request_interval).await;
@@ -122,7 +122,7 @@ async fn ping_from_china(
     let target = TargetAddr::new(host, port);
 
     {
-        let v = redis::get_from_redis(&target);
+        let v = redis::get_from_redis(&target).await;
         if let Ok(v) = v {
             return Json(v);
         }
