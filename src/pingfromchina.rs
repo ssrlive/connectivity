@@ -13,11 +13,11 @@ pub async fn ping_from_china(host: &str, port: u16) -> bool {
         let selector = Selector::parse(r#"input"#).unwrap();
         for item in document.select(&selector) {
             let value = item.value();
-            if let Some(val) = value.attr("id") && val == "encode" {
-                    if let Some(val) = value.attr("value") {
-                        encode = Some(val.to_string());
-                        break;
-                    }
+            if let Some("encode") = value.attr("id") {
+                if let Some(val) = value.attr("value") {
+                    encode = Some(val.to_string());
+                    break;
+                }
             }
         }
     }
