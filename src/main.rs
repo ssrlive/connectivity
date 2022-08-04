@@ -33,7 +33,7 @@ async fn main() -> Result<(), rocket::Error> {
 
     let ping_timeout: Duration;
     let survival_time: Duration;
-    let request_interval_secs: Duration;
+    let request_interval: Duration;
     {
         let config = rt_env.figment().clone();
         let config = config.select("my_settings");
@@ -45,7 +45,7 @@ async fn main() -> Result<(), rocket::Error> {
         survival_time = Duration::from_secs(n2);
 
         let n3 = config_get_value_of_key(&config, "request_interval_secs", 1_u64);
-        request_interval_secs = Duration::from_secs(n3);
+        request_interval = Duration::from_secs(n3);
     }
 
     let (tx, mut rx) = mpsc::channel::<PingTask>(1000);
@@ -57,13 +57,13 @@ async fn main() -> Result<(), rocket::Error> {
                 break;
             }
             if let PingTask::PingFromChina(addr) = task {
-                time::sleep(Duration::from_secs(request_interval_secs.as_secs())).await;
                 let start = Instant::now();
                 let b = pingfromchina::ping_from_china(&addr.host, addr.port).await;
                 let result = PingResult::new(&addr, b, &start.elapsed());
                 if let Err(r) = redis::put_to_redis(&addr, &result, &survival_time) {
                     print!("{}", r);
                 }
+                time::sleep(request_interval).await;
             }
         }
         println!("Worker thread is shutting down");
