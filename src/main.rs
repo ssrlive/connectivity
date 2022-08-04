@@ -1,7 +1,10 @@
 #[macro_use]
 extern crate rocket;
 use connectivity::{pingfromchina, redis, PingResult, PingTask, TargetAddr};
-use rocket::figment::value::{Num, Value};
+use rocket::figment::{
+    value::{Num, Value},
+    Figment,
+};
 use rocket::{serde::json::Json, Request, State};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -30,27 +33,19 @@ async fn main() -> Result<(), rocket::Error> {
 
     let ping_timeout: Duration;
     let survival_time: Duration;
+    let request_interval_secs: Duration;
     {
         let config = rt_env.figment().clone();
         let config = config.select("my_settings");
-        let v = config
-            .find_value("ping_timeout_secs")
-            .unwrap_or_else(|_| Value::from(5));
 
-        let mut n0: u64 = 5;
-        if let Value::Num(_, Num::I64(n)) = v {
-            n0 = n as u64;
-        }
+        let n0 = config_get_value_of_key(&config, "ping_timeout_secs", 5_u64);
         ping_timeout = Duration::from_secs(n0);
 
-        let v2 = config
-            .find_value("survival_time_secs")
-            .unwrap_or_else(|_| Value::from(3600));
-        let mut n2: u64 = 3600;
-        if let Value::Num(_, Num::I64(n)) = v2 {
-            n2 = n as u64;
-        }
+        let n2 = config_get_value_of_key(&config, "survival_time_secs", 3600_u64);
         survival_time = Duration::from_secs(n2);
+
+        let n3 = config_get_value_of_key(&config, "request_interval_secs", 1_u64);
+        request_interval_secs = Duration::from_secs(n3);
     }
 
     let (tx, mut rx) = mpsc::channel::<PingTask>(1000);
@@ -62,7 +57,7 @@ async fn main() -> Result<(), rocket::Error> {
                 break;
             }
             if let PingTask::PingFromChina(addr) = task {
-                time::sleep(Duration::from_secs(2)).await; // wait for 2 seconds
+                time::sleep(Duration::from_secs(request_interval_secs.as_secs())).await;
                 let start = Instant::now();
                 let b = pingfromchina::ping_from_china(&addr.host, addr.port).await;
                 let result = PingResult::new(&addr, b, &start.elapsed());
@@ -85,6 +80,18 @@ async fn main() -> Result<(), rocket::Error> {
     handle.await.unwrap();
 
     Ok(())
+}
+
+fn config_get_value_of_key(config: &Figment, key: &str, default: u64) -> u64 {
+    let v = config
+        .find_value(key)
+        .unwrap_or_else(|_| Value::from(default as i64));
+
+    let mut n0: u64 = default;
+    if let Value::Num(_, Num::I64(n)) = v {
+        n0 = n as u64;
+    }
+    n0
 }
 
 #[get("/")]
@@ -121,7 +128,7 @@ async fn ping_from_china(
         }
     }
 
-    let sender = state.sender.clone();
+    let sender = &state.sender;
     sender
         .send(PingTask::PingFromChina(target.clone()))
         .await

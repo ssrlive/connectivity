@@ -1,6 +1,7 @@
 [my_settings]
 ping_timeout_secs = 5
 survival_time_secs = 3600
+request_interval_secs = 1
 
 [default]
 template_dir = "static"
