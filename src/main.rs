@@ -121,11 +121,8 @@ async fn ping_from_china(
 ) -> Json<PingResult> {
     let target = TargetAddr::new(host, port);
 
-    {
-        let v = redis::get_from_redis(&target).await;
-        if let Ok(v) = v {
-            return Json(v);
-        }
+    if let Ok(v) = redis::get_from_redis(&target).await {
+        return Json(v);
     }
 
     let sender = &state.sender;
