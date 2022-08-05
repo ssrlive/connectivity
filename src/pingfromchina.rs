@@ -1,22 +1,24 @@
 use scraper::{Html, Selector};
 use std::collections::HashMap;
+use std::error::Error;
 
-pub async fn ping_from_china(host: &str, port: u16) -> bool {
+pub async fn ping_from_china(host: &str, port: u16) -> Result<bool, Box<dyn Error + Send + Sync>> {
     let url = format!("https://tool.chinaz.com/port?host={}&port={}", host, port);
 
-    let resp = reqwest::get(url).await.unwrap();
-    let text = resp.text().await.unwrap();
+    let resp = reqwest::get(url).await?;
+    let text = resp.text().await?;
 
     let mut encode = None;
     {
         let document = Html::parse_document(&text);
-        let selector = Selector::parse(r#"input"#).unwrap();
-        for item in document.select(&selector) {
-            let value = item.value();
-            if let Some("encode") = value.attr("id") {
-                if let Some(val) = value.attr("value") {
-                    encode = Some(val.to_string());
-                    break;
+        if let Ok(selector) = Selector::parse(r#"input"#) {
+            for item in document.select(&selector) {
+                let value = item.value();
+                if let Some("encode") = value.attr("id") {
+                    if let Some(val) = value.attr("value") {
+                        encode = Some(val.to_string());
+                        break;
+                    }
                 }
             }
         }
@@ -31,10 +33,10 @@ pub async fn ping_from_china(host: &str, port: u16) -> bool {
         ]);
 
         let client = reqwest::Client::new();
-        let resp = client.post(url).form(&map).send().await.unwrap();
+        let resp = client.post(url).form(&map).send().await?;
 
-        let text = resp.text().await.unwrap();
+        let text = resp.text().await?;
         result = text.contains("status:1");
     }
-    result
+    Ok(result)
 }
