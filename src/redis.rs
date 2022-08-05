@@ -17,7 +17,8 @@ pub async fn put_to_redis(
 
     let value = serde_json::to_string(&result)?;
 
-    conn.set/*::<_, String, _>*/(&key, &value).await?;
+    // conn.set::<_, &String, _>(&key, &value).await?;
+    conn.set(&key, &value).await?;
     conn.expire(&key, expire.as_secs() as usize).await?;
 
     Ok(())
