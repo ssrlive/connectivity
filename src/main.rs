@@ -6,12 +6,12 @@ use rocket::figment::{
     Figment,
 };
 use rocket::{serde::json::Json, Request, State};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::{
     sync::{
         mpsc::{self, Sender},
-        Notify,
+        Mutex, Notify,
     },
     time,
 };
@@ -51,8 +51,7 @@ async fn main() -> Result<(), rocket::Error> {
         let n3 = config_get_value_of_key(&config, "request_interval_secs", 1_u64);
         request_interval = Duration::from_secs(n3);
 
-        anti_banned_as_robot =
-            config_get_bool_value_of_key(&config, "anti_banned_as_robot", true);
+        anti_banned_as_robot = config_get_bool_value_of_key(&config, "anti_banned_as_robot", true);
     }
 
     let (tx, mut rx) = mpsc::channel::<PingTask>(1000);
@@ -65,19 +64,11 @@ async fn main() -> Result<(), rocket::Error> {
             }
             if let PingTask::PingFromChina((v, notify)) = task {
                 let start = Instant::now();
-                let addr: TargetAddr;
-                {
-                    let result = v.lock().unwrap();
-                    addr = result.target.clone();
-                }
+                let mut result = v.lock().await;
+                let addr = result.target.clone();
                 if let Ok(b) = pingfromchina::ping_from_china(&addr.host, addr.port).await {
-                    let result: PingResult;
-                    {
-                        let mut result2 = v.lock().unwrap();
-                        result2.result = b;
-                        result2.duration_secs = start.elapsed().as_secs();
-                        result = result2.clone();
-                    }
+                    result.result = b;
+                    result.duration_secs = start.elapsed().as_secs();
                     if let Err(r) = redis::put_to_redis(&addr, &result, &survival_time).await {
                         println!("{:?}", r);
                     }
@@ -174,7 +165,7 @@ async fn ping_from_china(
 
     notify.notified().await;
 
-    let v = v.lock().unwrap();
+    let v = v.lock().await;
 
     Json(v.clone())
 }

@@ -1,5 +1,5 @@
-use std::sync::{Arc, Mutex};
-use tokio::sync::Notify;
+use std::sync::Arc;
+use tokio::sync::{Mutex, Notify};
 
 use crate::pingresult::PingResult;
 use crate::targetaddr::TargetAddr;
