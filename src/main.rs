@@ -37,6 +37,7 @@ async fn main() -> Result<(), rocket::Error> {
     let ping_timeout: Duration;
     let survival_time: Duration;
     let request_interval: Duration;
+    let anti_banned_as_robot: bool;
     {
         let config = rt_env.figment().clone();
         let config = config.select("my_settings");
@@ -49,6 +50,9 @@ async fn main() -> Result<(), rocket::Error> {
 
         let n3 = config_get_value_of_key(&config, "request_interval_secs", 1_u64);
         request_interval = Duration::from_secs(n3);
+
+        anti_banned_as_robot =
+            config_get_bool_value_of_key(&config, "anti_banned_as_robot", true);
     }
 
     let (tx, mut rx) = mpsc::channel::<PingTask>(1000);
@@ -78,7 +82,9 @@ async fn main() -> Result<(), rocket::Error> {
                         println!("{:?}", r);
                     }
                 }
-                time::sleep(request_interval).await;
+                if anti_banned_as_robot {
+                    time::sleep(request_interval).await;
+                }
                 notify.notify_one();
             }
         }
@@ -106,6 +112,18 @@ fn config_get_value_of_key(config: &Figment, key: &str, default: u64) -> u64 {
     let mut n0: u64 = default;
     if let Value::Num(_, Num::I64(n)) = v {
         n0 = n as u64;
+    }
+    n0
+}
+
+fn config_get_bool_value_of_key(config: &Figment, key: &str, default: bool) -> bool {
+    let v = config
+        .find_value(key)
+        .unwrap_or_else(|_| Value::from(default));
+
+    let mut n0: bool = default;
+    if let Value::Bool(_, n) = v {
+        n0 = n;
     }
     n0
 }

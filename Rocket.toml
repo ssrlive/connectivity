@@ -1,6 +1,10 @@
 [my_settings]
 ping_timeout_secs = 5
+# Node availability information retention period
 survival_time_secs = 3600
+# this flag act as a human and prevent being banned
+anti_banned_as_robot = true
+#This variable is available if anti_banned_as_robot is set to true.
 request_interval_secs = 1
 
 [default]
