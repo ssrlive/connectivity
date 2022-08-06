@@ -1,3 +1,4 @@
+use crate::ChinazResult;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use std::error::Error;
@@ -8,26 +9,37 @@ pub async fn ping_from_china(host: &str, port: u16) -> Result<bool, Box<dyn Erro
     let resp = reqwest::get(url).await?;
     let text = resp.text().await?;
 
-    let mut encode = None;
+    let mut token = None;
+    let mut ts = None;
     {
         let document = Html::parse_document(&text);
         if let Ok(selector) = Selector::parse(r#"input"#) {
             for item in document.select(&selector) {
                 let value = item.value();
-                if let Some("encode") = value.attr("id") {
+                if let Some("token") = value.attr("id") {
                     if let Some(val) = value.attr("value") {
-                        encode = Some(val.to_string());
-                        break;
+                        token = Some(val.to_string());
+                    }
+                } else if let Some("ts") = value.attr("id") {
+                    if let Some(val) = value.attr("value") {
+                        ts = Some(val.to_string());
                     }
                 }
             }
         }
     }
+    if ts.is_none() || token.is_none() {
+        return Ok(false);
+    }
     let mut result = false;
-    if let Some(encode) = encode {
-        let url = "https://tool.chinaz.com/iframe.ashx?t=port";
+    //if let Some(token) = token && let Some(ts) = ts {
+    let token = token.unwrap();
+    let ts = ts.unwrap();
+    {
+        let url = "https://tool.chinaz.com/scanport";
         let map = HashMap::from([
-            ("encode", encode),
+            ("token", token),
+            ("ts", ts),
             ("host", host.to_string()),
             ("port", port.to_string()),
         ]);
@@ -36,7 +48,10 @@ pub async fn ping_from_china(host: &str, port: u16) -> Result<bool, Box<dyn Erro
         let resp = client.post(url).form(&map).send().await?;
 
         let text = resp.text().await?;
-        result = text.contains("status:1");
+        let json = serde_json::from_str::<ChinazResult>(&text).unwrap();
+        if json.code == 1 {
+            result = json.data.is_open;
+        }
     }
     Ok(result)
 }

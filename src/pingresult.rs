@@ -20,18 +20,27 @@ impl PingResult {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(crate = "rocket::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ChinazResultData {
+    pub is_open: bool,
+    pub rcode: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct ChinazResult {
+    pub code: i32,
+    pub msg: String,
+    pub data: ChinazResultData,
+}
+
 #[test]
 fn test_china_result() {
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(crate = "rocket::serde")]
-    struct ChinazResult {
-        status: u32,
-        msg: String,
-    }
-
-    let text = "{\"status\":1,\"msg\":\"开启\"}";
-
+    let text = r#"{"code":1,"data":{"isOpen":true,"rcode":1},"msg":"成功"}"#;
     let r = serde_json::from_str::<ChinazResult>(&text).unwrap();
-    assert_ne!(r.status, 0);
-    println!("{:?}", r.msg);
+    assert_ne!(r.code, 0_i32);
+    let s = serde_json::to_string(&r).unwrap();
+    println!("{:?}", s);
 }
