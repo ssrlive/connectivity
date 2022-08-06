@@ -6,10 +6,13 @@ use rocket::figment::{
     Figment,
 };
 use rocket::{serde::json::Json, Request, State};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::{
-    sync::mpsc::{self, Sender},
+    sync::{
+        mpsc::{self, Sender},
+        Notify,
+    },
     time,
 };
 
@@ -56,15 +59,27 @@ async fn main() -> Result<(), rocket::Error> {
             if let PingTask::Terminate = task {
                 break;
             }
-            if let PingTask::PingFromChina(addr) = task {
+            if let PingTask::PingFromChina((v, notify)) = task {
                 let start = Instant::now();
+                let addr: TargetAddr;
+                {
+                    let result = v.lock().unwrap();
+                    addr = result.target.clone();
+                }
                 if let Ok(b) = pingfromchina::ping_from_china(&addr.host, addr.port).await {
-                    let result = PingResult::new(&addr, b, &start.elapsed());
+                    let result: PingResult;
+                    {
+                        let mut result2 = v.lock().unwrap();
+                        result2.result = b;
+                        result2.duration_secs = start.elapsed().as_secs();
+                        result = result2.clone();
+                    }
                     if let Err(r) = redis::put_to_redis(&addr, &result, &survival_time).await {
                         println!("{:?}", r);
                     }
                 }
                 time::sleep(request_interval).await;
+                notify.notify_one();
             }
         }
         println!("Worker thread is shutting down");
@@ -126,11 +141,22 @@ async fn ping_from_china(
         return Json(v);
     }
 
+    let notify = Arc::new(Notify::new());
+    let v = Arc::new(Mutex::new(PingResult::new(
+        &target,
+        false,
+        &Duration::from_secs(1),
+    )));
+
     let sender = &state.sender;
     sender
-        .send(PingTask::PingFromChina(target.clone()))
+        .send(PingTask::PingFromChina((v.clone(), notify.clone())))
         .await
         .unwrap();
 
-    Json(PingResult::new(&target, false, &Duration::from_secs(1)))
+    notify.notified().await;
+
+    let v = v.lock().unwrap();
+
+    Json(v.clone())
 }
