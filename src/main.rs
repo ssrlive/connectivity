@@ -19,13 +19,22 @@ use tokio::{
 struct CustomerSettings {
     ping_timeout: Duration,
     sender: Arc<Sender<PingTask>>,
+    cached_to_redis: bool,
+    survival_time: Duration,
 }
 
 impl CustomerSettings {
-    fn new(ping_timeout: Duration, sender: Arc<Sender<PingTask>>) -> Self {
+    fn new(
+        ping_timeout: Duration,
+        cached_to_redis: bool,
+        survival_time: Duration,
+        sender: Arc<Sender<PingTask>>,
+    ) -> Self {
         CustomerSettings {
             ping_timeout,
             sender,
+            cached_to_redis,
+            survival_time,
         }
     }
 }
@@ -38,6 +47,7 @@ async fn main() -> Result<(), rocket::Error> {
     let survival_time: Duration;
     let request_interval: Duration;
     let anti_banned_as_robot: bool;
+    let cached_to_redis: bool;
     {
         let config = rt_env.figment().clone();
         let config = config.select("my_settings");
@@ -52,11 +62,12 @@ async fn main() -> Result<(), rocket::Error> {
         request_interval = Duration::from_secs(n3);
 
         anti_banned_as_robot = config_get_bool_value_of_key(&config, "anti_banned_as_robot", true);
+        cached_to_redis = config_get_bool_value_of_key(&config, "cached_to_redis", true);
     }
 
     let (tx, mut rx) = mpsc::channel::<PingTask>(1000);
     let tx = Arc::new(tx);
-    let settings = CustomerSettings::new(ping_timeout, tx.clone());
+    let settings = CustomerSettings::new(ping_timeout, cached_to_redis, survival_time, tx.clone());
     let handle = tokio::spawn(async move {
         while let Some(task) = rx.recv().await {
             if let PingTask::Terminate = task {
@@ -69,8 +80,10 @@ async fn main() -> Result<(), rocket::Error> {
                 if let Ok(b) = pingfromchina::ping_from_china(&addr.host, addr.port).await {
                     result.result = b;
                     result.duration_secs = start.elapsed().as_secs();
-                    if let Err(r) = redis::put_to_redis(&addr, &result, &survival_time).await {
-                        println!("{:?}", r);
+                    if cached_to_redis {
+                        if let Err(r) = redis::put_to_redis(&addr, &result, &survival_time).await {
+                            println!("{:?}", r);
+                        }
                     }
                 }
                 if anti_banned_as_robot {
@@ -132,10 +145,23 @@ fn not_found(req: &Request) -> String {
 #[get("/ping?<host>&<port>")]
 async fn ping(host: &str, port: u16, state: &State<CustomerSettings>) -> Json<PingResult> {
     let target = TargetAddr::new(host, port);
+    if state.cached_to_redis {
+        if let Ok(v) = redis::get_from_redis(&target).await {
+            return Json(v);
+        }
+    }
     let start = Instant::now();
     let timeout = state.ping_timeout;
     let result = target.is_reachable(timeout);
-    Json(PingResult::new(&target, result, &start.elapsed()))
+
+    let v = PingResult::new(&target, result, &start.elapsed());
+    if state.cached_to_redis {
+        let expire = state.survival_time;
+        if let Err(r) = redis::put_to_redis(&target, &v, &expire).await {
+            println!("{:?}", r);
+        }
+    }
+    Json(v)
 }
 
 #[get("/pingfromchina?<host>&<port>")]
@@ -146,8 +172,10 @@ async fn ping_from_china(
 ) -> Json<PingResult> {
     let target = TargetAddr::new(host, port);
 
-    if let Ok(v) = redis::get_from_redis(&target).await {
-        return Json(v);
+    if state.cached_to_redis {
+        if let Ok(v) = redis::get_from_redis(&target).await {
+            return Json(v);
+        }
     }
 
     let notify = Arc::new(Notify::new());
